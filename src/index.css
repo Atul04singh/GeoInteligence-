@@ -1,1 +1,38 @@
 @import "tailwindcss";
+
+.clickable-marker {
+  cursor: pointer !important;
+  filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.5));
+}
+
+.custom-popup .leaflet-popup-content-wrapper {
+  background: #121212 !important;
+  color: white !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  padding: 0 !important;
+}
+
+.custom-popup .leaflet-popup-content {
+  margin: 0 !important;
+  width: auto !important;
+}
+
+.custom-popup .leaflet-popup-tip {
+  background: #121212 !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.custom-popup .leaflet-popup-close-button {
+  color: white !important;
+  padding: 8px !important;
+}
+
+/* Hide scrollbar for the tower table */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
