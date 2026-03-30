@@ -1,136 +1,23 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Map as MapIcon, Activity, Layers, Radio as Tower, Download, X, ChevronRight, ExternalLink, AlertCircle, Info, History as HistoryIcon, Trash2, Clock, Maximize, Minimize, GripHorizontal, Search, Calendar, Filter } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { Upload, Map as MapIcon, Activity, Layers, Radio as Tower, Download, X, ChevronRight, ExternalLink, AlertCircle, Info, History as HistoryIcon, Trash2, Clock, Maximize, Minimize, GripHorizontal, Search, Calendar, Filter, Phone, Zap, TrendingUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
 import * as XLSX from 'xlsx';
 
-// --- DB Utils (IndexedDB for persistent history) ---
-const DB_NAME = 'GeoTelHistory';
-const STORE_NAME = 'results';
-
-const initDB = (): Promise<IDBDatabase> => {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-};
-
-const saveToHistory = async (item: HistoryItem) => {
-  const db = await initDB();
-  return new Promise<void>((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    store.put(item);
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error);
-  });
-};
-
-const getHistory = async (): Promise<HistoryItem[]> => {
-  const db = await initDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readonly');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.getAll();
-    request.onsuccess = () => resolve(request.result.sort((a, b) => b.timestamp - a.timestamp));
-    request.onerror = () => reject(request.error);
-  });
-};
-
-const deleteFromHistory = async (id: string) => {
-  const db = await initDB();
-  return new Promise<void>((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    store.delete(id);
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error);
-  });
-};
-
-// --- Utils ---
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-
-// --- Types ---
-interface Point {
-  lat: number;
-  lon: number;
-  date: string;
-  time: string;
-  cellId: string;
-  timestamp: number;
-}
-
-interface TowerStat {
-  "CELL ID": string;
-  "FREQUENCY": number;
-  "AVG LATITUDE": number;
-  "AVG LONGITUDE": number;
-}
-
-interface AnalysisResult {
-  points: Point[];
-  towerAnalysis: TowerStat[];
-  summary: {
-    totalPoints: number;
-    uniqueTowers: number;
-    dateRange: string;
-  };
-}
-
-interface HistoryItem {
-  id: string;
-  name: string;
-  timestamp: number;
-  result: AnalysisResult;
-}
-
-// --- Components ---
-
-const Card = ({ children, className }: { children: React.ReactNode; className?: string }) => (
-  <div className={cn("bg-[#121212] border border-white/10 rounded-2xl overflow-hidden shadow-2xl", className)}>
-    {children}
-  </div>
-);
-
-const Button = ({ children, onClick, disabled, variant = 'primary', className }: any) => {
-  const variants = {
-    primary: "bg-white text-black hover:bg-gray-200",
-    secondary: "bg-white/5 text-white hover:bg-white/10 border border-white/10",
-    outline: "border border-white/20 text-white hover:bg-white/5",
-    ghost: "text-white/60 hover:text-white hover:bg-white/5"
-  };
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={cn(
-        "px-6 py-3 rounded-xl font-medium transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2",
-        variants[variant as keyof typeof variants],
-        className
-      )}
-    >
-      {children}
-    </button>
-  );
-};
+import { Point, TowerStat, IntelligenceSummary, AnalysisResult, HistoryItem } from './types';
+import { cn, formatDuration } from './lib/utils';
+import { saveToHistory, getHistory, deleteFromHistory } from './lib/db';
+import { Card } from './components/ui/Card';
+import { Button } from './components/ui/Button';
+import { IntelligenceSummaryPanel } from './components/IntelligenceSummaryPanel';
+import { MapViewer } from './components/MapViewer';
+import { TowerTable } from './components/TowerTable';
 
 export default function App() {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [activeTab, setActiveTab] = useState<'heatmap' | 'path' | 'cluster' | 'towers'>('heatmap');
+  const [activeTab, setActiveTab] = useState<'heatmap' | 'path' | 'cluster' | 'towers' | 'intelligence'>('heatmap');
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [mapHeight, setMapHeight] = useState(600);
   const [isResizing, setIsResizing] = useState(false);
@@ -353,23 +240,38 @@ export default function App() {
 
           if (jsonData.length === 0) throw new Error("The selected Excel file appears to be empty.");
 
-          // Auto-detect columns
+          // Auto-detect columns based on user provided keys
           const keys = Object.keys(jsonData[0]);
-          const latKey = keys.find(k => k.toUpperCase().includes("LAT"));
-          const lonKey = keys.find(k => k.toUpperCase().includes("LON"));
+          const latKey = keys.find(k => k.toUpperCase() === "LATITUDE") || keys.find(k => k.toUpperCase().includes("LAT"));
+          const lonKey = keys.find(k => k.toUpperCase() === "LONGITUDE") || keys.find(k => k.toUpperCase().includes("LON"));
           
           if (!latKey || !lonKey) {
-            throw new Error("Could not find Latitude or Longitude columns. Please ensure your Excel file has columns named 'LAT' and 'LON'.");
+            throw new Error("Could not find Latitude or Longitude columns. Please ensure your Excel file has columns named 'LATITUDE' and 'LONGITUDE'.");
           }
 
-          const dateKey = keys.find(k => k.toUpperCase().includes("DATE")) || "DATE";
-          const timeKey = keys.find(k => k.toUpperCase().includes("TIME")) || "TIME";
-          const cellKey = keys.find(k => k.toUpperCase().includes("CELL") || k.toUpperCase().includes("TOWER")) || "CELL ID";
+          const dateKey = keys.find(k => k.toUpperCase() === "DATE") || keys.find(k => k.toUpperCase().includes("DATE")) || "DATE";
+          const timeKey = keys.find(k => k.toUpperCase() === "TIME") || keys.find(k => k.toUpperCase().includes("TIME")) || "TIME";
+          const cellKey = keys.find(k => k.toUpperCase() === "FIRST CELL ID") || keys.find(k => k.toUpperCase() === "FIRST CELL ID A") || keys.find(k => k.toUpperCase().includes("CELL") || k.toUpperCase().includes("TOWER")) || "CELL ID";
+          const aPartyKey = keys.find(k => k.toUpperCase() === "A PARTY") || keys.find(k => k.toUpperCase().includes("A PARTY") || k.toUpperCase().includes("A_PARTY") || k.toUpperCase().includes("SOURCE"));
+          const bPartyKey = keys.find(k => k.toUpperCase() === "B PARTY") || keys.find(k => k.toUpperCase().includes("B PARTY") || k.toUpperCase().includes("B_PARTY") || k.toUpperCase().includes("DESTINATION"));
+          const durationKey = keys.find(k => k.toUpperCase() === "DURATION") || keys.find(k => k.toUpperCase().includes("DURATION") || k.toUpperCase().includes("DUR"));
+          const callTypeKey = keys.find(k => k.toUpperCase() === "CALL TYPE");
+          const imeiKey = keys.find(k => k.toUpperCase() === "IMEI") || keys.find(k => k.toUpperCase() === "IMEI A");
+          const imsiKey = keys.find(k => k.toUpperCase() === "IMSI") || keys.find(k => k.toUpperCase() === "IMSI A");
+          const addressKey = keys.find(k => k.toUpperCase() === "FIRST CELL ID A ADDRESS") || keys.find(k => k.toUpperCase().includes("ADDRESS"));
+          const roamingKey = keys.find(k => k.toUpperCase() === "ROAMING A") || keys.find(k => k.toUpperCase().includes("ROAMING"));
 
           // Process points
           const points = jsonData.map(row => {
             const lat = parseFloat(row[latKey]);
             const lon = parseFloat(row[lonKey]);
+            const bParty = bPartyKey ? String(row[bPartyKey] || "").trim() : "";
+            
+            // Rule: Ignore rows where LATITUDE or LONGITUDE is missing
+            if (isNaN(lat) || isNaN(lon)) return null;
+            
+            // Rule: Ignore rows where B PARTY is empty
+            if (!bParty) return null;
             
             // Robust date/time parsing
             let rawDate = String(row[dateKey] || "");
@@ -394,13 +296,144 @@ export default function App() {
               date: normalizedDate,
               time: normalizedTime,
               cellId: String(row[cellKey] || "N/A"),
-              timestamp: new Date(`${normalizedDate}T${normalizedTime}:00`).getTime() || Date.now()
+              timestamp: new Date(`${normalizedDate}T${normalizedTime}:00`).getTime() || Date.now(),
+              aParty: aPartyKey ? String(row[aPartyKey] || "") : undefined,
+              bParty: bParty,
+              duration: durationKey ? parseFloat(row[durationKey]) || 0 : undefined,
+              callType: callTypeKey ? String(row[callTypeKey] || "") : undefined,
+              imei: imeiKey ? String(row[imeiKey] || "") : undefined,
+              imsi: imsiKey ? String(row[imsiKey] || "") : undefined,
+              address: addressKey ? String(row[addressKey] || "") : undefined,
+              roaming: roamingKey ? String(row[roamingKey] || "") : undefined
             };
-          }).filter(p => !isNaN(p.lat) && !isNaN(p.lon)).sort((a, b) => a.timestamp - b.timestamp);
+          }).filter((p): p is NonNullable<typeof p> => p !== null).sort((a, b) => a.timestamp - b.timestamp);
 
           if (points.length === 0) {
-            throw new Error("No valid coordinates found in the file. Please check the data format.");
+            throw new Error("No valid coordinates or B-Party numbers found in the file. Please check the data format.");
           }
+
+          // Intelligence Summary Calculations
+          const bPartyData: Record<string, { 
+            count: number; 
+            totalDuration: number; 
+            lastDate: string; 
+            lastTime: string; 
+            callTypes: Set<string>;
+            lastTimestamp: number;
+          }> = {};
+          const locationHits: Record<string, number> = {};
+          const dayCounts: Record<string, number> = {};
+          const hourCounts: Record<string, number> = {};
+          const callTypeStats: Record<string, number> = {};
+          const addressCounts: Record<string, number> = {};
+          let longestCall = { duration: 0, number: "N/A" };
+          let imei = "Not Found";
+          let imsi = "Not Found";
+          let isRoaming = false;
+
+          points.forEach(p => {
+            // 1. MOST CONTACTED
+            if (p.bParty) {
+              if (!bPartyData[p.bParty]) {
+                bPartyData[p.bParty] = { 
+                  count: 0, 
+                  totalDuration: 0, 
+                  lastDate: p.date, 
+                  lastTime: p.time, 
+                  callTypes: new Set(),
+                  lastTimestamp: p.timestamp
+                };
+              }
+              const data = bPartyData[p.bParty];
+              data.count++;
+              data.totalDuration += p.duration || 0;
+              if (p.callType) data.callTypes.add(p.callType);
+              if (p.timestamp >= data.lastTimestamp) {
+                data.lastDate = p.date;
+                data.lastTime = p.time;
+                data.lastTimestamp = p.timestamp;
+              }
+            }
+
+            // 2. TOP LOCATION
+            const locKey = `${p.lat.toFixed(4)},${p.lon.toFixed(4)}`;
+            locationHits[locKey] = (locationHits[locKey] || 0) + 1;
+
+            // 3. LONGEST CALL
+            if (p.duration !== undefined && p.duration > longestCall.duration) {
+              longestCall = { duration: p.duration, number: p.bParty || "N/A" };
+            }
+
+            // 5. ACTIVITY PROFILE - Top Day
+            if (p.date) {
+              dayCounts[p.date] = (dayCounts[p.date] || 0) + 1;
+            }
+
+            // 5. ACTIVITY PROFILE - Peak Hour
+            if (p.time) {
+              const hour = p.time.split(':')[0];
+              hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+            }
+
+            // 6. CALL TYPES
+            if (p.callType) {
+              callTypeStats[p.callType] = (callTypeStats[p.callType] || 0) + 1;
+            }
+
+            // Address Stats
+            if (p.address) {
+              addressCounts[p.address] = (addressCounts[p.address] || 0) + 1;
+            }
+
+            // 4. DEVICE IDENTITY (take first non-empty)
+            if (imei === "Not Found" && p.imei && p.imei.trim() !== "") imei = p.imei;
+            if (imsi === "Not Found" && p.imsi && p.imsi.trim() !== "") imsi = p.imsi;
+
+            // 7. ROAMING STATUS
+            if (p.roaming && p.roaming.toUpperCase() !== "HOME" && p.roaming.toUpperCase() !== "NO" && p.roaming.toUpperCase() !== "FALSE") {
+              isRoaming = true;
+            }
+          });
+
+          const getSortedEntries = (counts: Record<string, number>) => {
+            return Object.entries(counts)
+              .sort((a, b) => b[1] - a[1])
+              .map(([key, count]) => ({ key, count }));
+          };
+
+          const sortedContacts = Object.entries(bPartyData)
+            .sort((a, b) => b[1].count - a[1].count)
+            .map(([number, data]) => ({
+              number,
+              count: data.count,
+              totalDuration: data.totalDuration,
+              lastDate: data.lastDate,
+              lastTime: data.lastTime,
+              callTypes: Array.from(data.callTypes)
+            }));
+
+          const topLocationEntry = getSortedEntries(locationHits)[0];
+          const topDayEntry = getSortedEntries(dayCounts)[0];
+          const topHourEntry = getSortedEntries(hourCounts)[0];
+          const topAddressEntry = getSortedEntries(addressCounts)[0];
+
+          const intelligenceSummary: IntelligenceSummary = {
+            contactStats: sortedContacts,
+            topLocation: topLocationEntry ? { 
+              lat: parseFloat(topLocationEntry.key.split(',')[0]), 
+              lon: parseFloat(topLocationEntry.key.split(',')[1]), 
+              count: topLocationEntry.count 
+            } : null,
+            longestCall: longestCall.duration > 0 ? longestCall : null,
+            device: { imei, imsi },
+            activity: { 
+              topDay: topDayEntry ? topDayEntry.key : "N/A", 
+              peakHour: topHourEntry ? `${topHourEntry.key}:00` : "N/A" 
+            },
+            callTypeStats,
+            isRoaming,
+            topAddress: topAddressEntry ? topAddressEntry.key : null
+          };
 
           // Tower Analysis
           const towerStats: any = {};
@@ -428,7 +461,8 @@ export default function App() {
               totalPoints: points.length,
               uniqueTowers: towerAnalysis.length,
               dateRange: points.length > 0 ? `${points[0].date} to ${points[points.length - 1].date}` : "N/A"
-            }
+            },
+            intelligenceSummary
           });
         } catch (err) {
           reject(err);
@@ -676,6 +710,7 @@ export default function App() {
             {/* Tabs */}
             <div className="flex overflow-x-auto pb-2 gap-2 no-scrollbar">
               {[
+                { id: 'intelligence', label: 'Intelligence', icon: TrendingUp },
                 { id: 'heatmap', label: 'Heatmap', icon: MapIcon },
                 { id: 'path', label: 'Path', icon: Activity },
                 { id: 'cluster', label: 'Clusters', icon: Layers },
@@ -708,7 +743,11 @@ export default function App() {
                   )}
                   style={{ height: isFullScreen ? '100vh' : `${mapHeight}px` }}
                 >
-                  {activeTab !== 'towers' ? (
+                  {activeTab === 'intelligence' ? (
+                    <div className="p-6 h-full overflow-y-auto bg-black/40 backdrop-blur-sm">
+                      <IntelligenceSummaryPanel summary={result.intelligenceSummary} />
+                    </div>
+                  ) : activeTab !== 'towers' ? (
                     <MapViewer type={activeTab} points={filteredPoints} />
                   ) : (
                     <TowerTable data={filteredTowerAnalysis} />
@@ -821,226 +860,4 @@ export default function App() {
   );
 }
 
-// --- Sub-components ---
-
-const MapViewer = ({ type, points }: { type: string; points: Point[] }) => {
-  const mapRef = useRef<HTMLDivElement>(null);
-  const leafletMap = useRef<any>(null);
-  const layersRef = useRef<any[]>([]);
-
-  useEffect(() => {
-    if (!mapRef.current || leafletMap.current || !(window as any).L) return;
-
-    const L = (window as any).L;
-    const center = [points[0].lat, points[0].lon];
-    leafletMap.current = L.map(mapRef.current, { 
-      zoomControl: false,
-      preferCanvas: true 
-    }).setView(center, 13);
-    
-    L.control.zoom({ position: 'bottomright' }).addTo(leafletMap.current);
-
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: 'abcd',
-      maxZoom: 20
-    }).addTo(leafletMap.current);
-
-    // Handle container resize
-    const resizeObserver = new ResizeObserver(() => {
-      if (leafletMap.current) {
-        leafletMap.current.invalidateSize();
-      }
-    });
-    resizeObserver.observe(mapRef.current);
-
-    return () => {
-      resizeObserver.disconnect();
-      if (leafletMap.current) {
-        leafletMap.current.remove();
-        leafletMap.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!leafletMap.current) return;
-    const L = (window as any).L;
-
-    // Clear existing layers
-    layersRef.current.forEach(layer => leafletMap.current.removeLayer(layer));
-    layersRef.current = [];
-
-    const addMarkers = () => {
-      // Limit markers in heatmap mode or if there are too many points to prevent lag/crashes
-      const maxMarkers = type === 'heatmap' ? 100 : 1000;
-      const displayPoints = points.length > maxMarkers ? points.slice(0, maxMarkers) : points;
-
-      displayPoints.forEach(p => {
-        const marker = L.circleMarker([p.lat, p.lon], {
-          radius: 12,
-          fillColor: '#ff4444',
-          color: '#fff',
-          weight: 3,
-          opacity: 1,
-          fillOpacity: 0.9,
-          className: 'clickable-marker',
-          title: `Cell ID: ${p.cellId} | ${p.date} ${p.time}`, // Native tooltip on hover
-          pane: 'markerPane', // Ensure markers are on top of paths/heatmaps
-          bubblingMouseEvents: false // Prevent events from propagating to the map
-        }).addTo(leafletMap.current);
-        
-        // Add hover effect
-        marker.on('mouseover', function(this: any) {
-          this.setStyle({
-            radius: 15,
-            fillOpacity: 1,
-            weight: 4
-          });
-        });
-        
-        marker.on('mouseout', function(this: any) {
-          this.setStyle({
-            radius: 12,
-            fillOpacity: 0.9,
-            weight: 3
-          });
-        });
-        
-        const popupContent = `
-          <div class="p-2 space-y-3 min-w-[200px] bg-[#121212] text-white rounded-xl">
-            <div class="flex justify-between items-start">
-              <p class="text-[10px] font-bold tracking-widest text-white/40 uppercase">Coordinate Details</p>
-            </div>
-            <div class="space-y-1">
-              <p class="text-xs text-white/60">Lat: <span class="text-white font-mono">${p.lat.toFixed(6)}</span></p>
-              <p class="text-xs text-white/60">Lon: <span class="text-white font-mono">${p.lon.toFixed(6)}</span></p>
-            </div>
-            <div class="space-y-1">
-              <p class="text-[10px] text-white/40 uppercase font-bold tracking-wider">Metadata</p>
-              <p class="text-xs flex justify-between"><span>ID:</span> <span class="text-white font-mono">${p.cellId}</span></p>
-              <p class="text-xs flex justify-between"><span>Date:</span> <span class="text-white font-mono">${p.date}</span></p>
-              <p class="text-xs flex justify-between"><span>Time:</span> <span class="text-white font-mono">${p.time}</span></p>
-            </div>
-            <div class="pt-2 flex flex-col gap-2">
-              <button onclick="window.copyToClipboard('${p.lat}, ${p.lon}')" class="w-full py-2 bg-white/10 hover:bg-white/20 rounded-lg text-[10px] font-bold transition-all">COPY COORDS</button>
-              <a href="https://www.google.com/maps?q=${p.lat},${p.lon}" target="_blank" class="w-full py-2 bg-white text-black rounded-lg text-[10px] font-bold text-center transition-all">GOOGLE MAPS</a>
-            </div>
-          </div>
-        `;
-        marker.bindPopup(popupContent, { 
-          className: 'custom-popup',
-          maxWidth: 300
-        });
-        layersRef.current.push(marker);
-      });
-    };
-
-    // Global helper for popup buttons
-    (window as any).copyToClipboard = (text: string) => {
-      navigator.clipboard.writeText(text);
-      // We could add a toast here
-    };
-
-    if (type === 'heatmap' && L.heatLayer) {
-      const heatData = points.map(p => [p.lat, p.lon, 0.5]);
-      // Use a small timeout to ensure the map is ready and avoid blocking the main thread
-      const heatTimeout = setTimeout(() => {
-        if (!leafletMap.current) return;
-        try {
-          const heatLayer = L.heatLayer(heatData, {
-            radius: 25,
-            blur: 15,
-            maxZoom: 17,
-            gradient: { 0.4: 'blue', 0.65: 'lime', 1: 'red' }
-          }).addTo(leafletMap.current);
-          layersRef.current.push(heatLayer);
-          addMarkers();
-        } catch (e) {
-          console.error("Heatmap failed", e);
-          addMarkers();
-        }
-      }, 0);
-      return () => clearTimeout(heatTimeout);
-    } else if (type === 'heatmap' && !L.heatLayer) {
-      // Fallback to markers if heat layer is not available
-      addMarkers();
-    } else if (type === 'path') {
-      const latlngs = points.map(p => [p.lat, p.lon]);
-      const polyline = L.polyline(latlngs, {
-        color: 'white',
-        weight: 2,
-        opacity: 0.5,
-        dashArray: '5, 10'
-      }).addTo(leafletMap.current);
-      layersRef.current.push(polyline);
-      addMarkers();
-    } else if (type === 'cluster') {
-      points.forEach(p => {
-        const circle = L.circle([p.lat, p.lon], {
-          color: 'white',
-          fillColor: 'white',
-          fillOpacity: 0.1,
-          radius: 100,
-          weight: 1
-        }).addTo(leafletMap.current);
-        layersRef.current.push(circle);
-      });
-      addMarkers();
-    }
-
-    // Adjust bounds
-    if (points.length > 0) {
-      const bounds = L.latLngBounds(points.map(p => [p.lat, p.lon]));
-      leafletMap.current.fitBounds(bounds, { padding: [50, 50] });
-    }
-  }, [type, points]);
-
-  return <div ref={mapRef} className="w-full h-full" />;
-};
-
-const TowerTable = ({ data }: { data: TowerStat[] }) => (
-  <div className="h-full overflow-y-auto p-6 no-scrollbar">
-    <table className="w-full text-left border-collapse">
-      <thead>
-        <tr className="text-[10px] text-white/40 uppercase tracking-widest font-bold border-b border-white/10">
-          <th className="pb-4">Cell ID</th>
-          <th className="pb-4">Frequency</th>
-          <th className="pb-4">Avg Location</th>
-          <th className="pb-4">GMap</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-white/5">
-        {data.map((tower, idx) => (
-          <tr key={idx} className="group hover:bg-white/[0.02] transition-colors">
-            <td className="py-4 font-mono text-sm">{tower["CELL ID"]}</td>
-            <td className="py-4">
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-1 bg-white/5 rounded-full overflow-hidden max-w-[100px]">
-                  <div 
-                    className="h-full bg-white transition-all duration-1000" 
-                    style={{ width: `${(tower.FREQUENCY / data[0].FREQUENCY) * 100}%` }}
-                  />
-                </div>
-                <span className="text-sm font-mono">{tower.FREQUENCY}</span>
-              </div>
-            </td>
-            <td className="py-4 text-xs text-white/40 font-mono">
-              {tower["AVG LATITUDE"].toFixed(4)}, {tower["AVG LONGITUDE"].toFixed(4)}
-            </td>
-            <td className="py-4">
-              <a 
-                href={`https://www.google.com/maps/search/?api=1&query=${tower["AVG LATITUDE"]},${tower["AVG LONGITUDE"]}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="p-2 hover:bg-white/10 rounded-lg transition-colors inline-block"
-              >
-                <ExternalLink className="w-4 h-4 text-white/60 hover:text-white" />
-              </a>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-);
+// --- Sub-components removed (moved to separate files) ---
