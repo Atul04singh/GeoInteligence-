@@ -1,7 +1,18 @@
 import React, { useRef, useEffect } from 'react';
 import { Point } from '../types';
+import { formatDate } from '../lib/utils';
 
-export const MapViewer = ({ type, points }: { type: string; points: Point[] }) => {
+interface MapViewerProps {
+  type: string;
+  points: Point[];
+  selectedPoint?: Point | null;
+}
+
+export const MapViewer = ({ 
+  type, 
+  points, 
+  selectedPoint, 
+}: MapViewerProps) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMap = useRef<any>(null);
   const layersRef = useRef<any[]>([]);
@@ -10,10 +21,9 @@ export const MapViewer = ({ type, points }: { type: string; points: Point[] }) =
     if (!mapRef.current || leafletMap.current || !(window as any).L) return;
 
     const L = (window as any).L;
-    const center = [points[0].lat, points[0].lon];
+    const center = points.length > 0 ? [points[0].lat, points[0].lon] : [0, 0];
     leafletMap.current = L.map(mapRef.current, { 
-      zoomControl: false,
-      preferCanvas: true 
+      zoomControl: false
     }).setView(center, 13);
     
     L.control.zoom({ position: 'bottomright' }).addTo(leafletMap.current);
@@ -41,6 +51,16 @@ export const MapViewer = ({ type, points }: { type: string; points: Point[] }) =
     };
   }, []);
 
+  // Zoom to selected point
+  useEffect(() => {
+    if (leafletMap.current && selectedPoint) {
+      leafletMap.current.setView([selectedPoint.lat, selectedPoint.lon], 16, {
+        animate: true,
+        duration: 1
+      });
+    }
+  }, [selectedPoint]);
+
   useEffect(() => {
     if (!leafletMap.current) return;
     const L = (window as any).L;
@@ -50,59 +70,79 @@ export const MapViewer = ({ type, points }: { type: string; points: Point[] }) =
     layersRef.current = [];
 
     const addMarkers = () => {
-      // Limit markers in heatmap mode or if there are too many points to prevent lag/crashes
-      const maxMarkers = type === 'heatmap' ? 100 : 1000;
-      const displayPoints = points.length > maxMarkers ? points.slice(0, maxMarkers) : points;
+      // Group points by coordinate to handle large datasets (5k+) efficiently
+      const coordGroups = new Map<string, { points: Point[], count: number }>();
+      
+      points.forEach(p => {
+        const key = `${p.lat.toFixed(6)},${p.lon.toFixed(6)}`;
+        if (!coordGroups.has(key)) {
+          coordGroups.set(key, { points: [], count: 0 });
+        }
+        const group = coordGroups.get(key)!;
+        group.points.push(p);
+        group.count++;
+      });
 
-      displayPoints.forEach(p => {
-        const marker = L.circleMarker([p.lat, p.lon], {
-          radius: 12,
+      const maxCount = Math.max(...Array.from(coordGroups.values()).map(g => g.count));
+
+      coordGroups.forEach((group, key) => {
+        const [lat, lon] = key.split(',').map(Number);
+        const p = group.points[0];
+        const intensity = group.count / maxCount;
+        
+        // Dynamic ring color based on activity
+        // Low: White, Medium: Orange, High: Red
+        const ringColor = intensity > 0.8 ? '#ff0000' : intensity > 0.3 ? '#ffaa00' : '#ffffff';
+        const ringWeight = 2 + (intensity * 4); // Thicker ring for high activity
+        
+        const marker = L.circleMarker([lat, lon], {
+          radius: 10 + (intensity * 5),
           fillColor: '#ff4444',
-          color: '#fff',
-          weight: 3,
+          color: ringColor,
+          weight: ringWeight,
           opacity: 1,
           fillOpacity: 0.9,
-          className: 'clickable-marker',
-          title: `Cell ID: ${p.cellId} | ${p.date} ${p.time}`, // Native tooltip on hover
-          pane: 'markerPane', // Ensure markers are on top of paths/heatmaps
-          bubblingMouseEvents: false // Prevent events from propagating to the map
+          className: 'activity-marker',
+          pane: 'markerPane',
+          bubblingMouseEvents: false
         }).addTo(leafletMap.current);
         
         // Add hover effect
         marker.on('mouseover', function(this: any) {
           this.setStyle({
-            radius: 15,
+            radius: 18,
             fillOpacity: 1,
-            weight: 4
+            weight: ringWeight + 2
           });
         });
         
         marker.on('mouseout', function(this: any) {
           this.setStyle({
-            radius: 12,
+            radius: 10 + (intensity * 5),
             fillOpacity: 0.9,
-            weight: 3
+            weight: ringWeight
           });
         });
         
         const popupContent = `
-          <div class="p-2 space-y-3 min-w-[200px] bg-[#121212] text-white rounded-xl">
-            <div class="flex justify-between items-start">
-              <p class="text-[10px] font-bold tracking-widest text-white/40 uppercase">Coordinate Details</p>
+          <div class="p-2 space-y-3 min-w-[220px] bg-[#121212] text-white rounded-xl">
+            <div class="flex justify-between items-center">
+              <p class="text-[10px] font-bold tracking-widest text-white/40 uppercase">Location Intel</p>
+              <span class="px-2 py-0.5 bg-white/10 rounded text-[9px] font-bold text-white/60">${group.count} HITS</span>
             </div>
             <div class="space-y-1">
-              <p class="text-xs text-white/60">Lat: <span class="text-white font-mono">${p.lat.toFixed(6)}</span></p>
-              <p class="text-xs text-white/60">Lon: <span class="text-white font-mono">${p.lon.toFixed(6)}</span></p>
+              <p class="text-xs text-white/60">Lat: <span class="text-white font-mono">${lat.toFixed(6)}</span></p>
+              <p class="text-xs text-white/60">Lon: <span class="text-white font-mono">${lon.toFixed(6)}</span></p>
             </div>
             <div class="space-y-1">
-              <p class="text-[10px] text-white/40 uppercase font-bold tracking-wider">Metadata</p>
+              <p class="text-[10px] text-white/40 uppercase font-bold tracking-wider">Latest Activity</p>
               <p class="text-xs flex justify-between"><span>ID:</span> <span class="text-white font-mono">${p.cellId}</span></p>
-              <p class="text-xs flex justify-between"><span>Date:</span> <span class="text-white font-mono">${p.date}</span></p>
+              <p class="text-xs flex justify-between"><span>Date:</span> <span class="text-white font-mono">${formatDate(p.date)}</span></p>
               <p class="text-xs flex justify-between"><span>Time:</span> <span class="text-white font-mono">${p.time}</span></p>
             </div>
             <div class="pt-2 flex flex-col gap-2">
-              <button onclick="window.copyToClipboard('${p.lat}, ${p.lon}')" class="w-full py-2 bg-white/10 hover:bg-white/20 rounded-lg text-[10px] font-bold transition-all">COPY COORDS</button>
-              <a href="https://www.google.com/maps?q=${p.lat},${p.lon}" target="_blank" class="w-full py-2 bg-white text-black rounded-lg text-[10px] font-bold text-center transition-all">GOOGLE MAPS</a>
+              <button onclick="window.copyToClipboard('${lat}, ${lon}')" class="w-full py-2 bg-white/10 hover:bg-white/20 rounded-lg text-[10px] font-bold transition-all">COPY COORDS</button>
+              <a href="https://www.google.com/maps?q=${lat},${lon}" target="_blank" class="w-full py-2 bg-white text-black rounded-lg text-[10px] font-bold text-center transition-all">GOOGLE MAPS</a>
             </div>
           </div>
         `;
@@ -119,26 +159,29 @@ export const MapViewer = ({ type, points }: { type: string; points: Point[] }) =
       navigator.clipboard.writeText(text);
     };
 
-    if (type === 'heatmap' && L.heatLayer) {
-      const heatData = points.map(p => [p.lat, p.lon, 0.5]);
-      const heatTimeout = setTimeout(() => {
-        if (!leafletMap.current) return;
-        try {
-          const heatLayer = L.heatLayer(heatData, {
-            radius: 25,
-            blur: 15,
-            maxZoom: 17,
-            gradient: { 0.4: 'blue', 0.65: 'lime', 1: 'red' }
-          }).addTo(leafletMap.current);
-          layersRef.current.push(heatLayer);
-          addMarkers();
-        } catch (e) {
-          console.error("Heatmap failed", e);
-          addMarkers();
-        }
-      }, 0);
-      return () => clearTimeout(heatTimeout);
-    } else if (type === 'heatmap' && !L.heatLayer) {
+    if (type === 'heatmap') {
+      // Alternative to canvas-based heatmap: Density Circles
+      const densityMap = new Map<string, number>();
+      points.forEach(p => {
+        const key = `${p.lat.toFixed(3)},${p.lon.toFixed(3)}`;
+        densityMap.set(key, (densityMap.get(key) || 0) + 1);
+      });
+
+      const maxDensity = Math.max(...Array.from(densityMap.values()));
+
+      densityMap.forEach((count, key) => {
+        const [lat, lon] = key.split(',').map(Number);
+        const intensity = count / maxDensity;
+        
+        const circle = L.circle([lat, lon], {
+          radius: 200 + (intensity * 300),
+          fillColor: intensity > 0.7 ? '#ff4444' : intensity > 0.4 ? '#ffaa00' : '#4444ff',
+          color: 'transparent',
+          fillOpacity: 0.2 + (intensity * 0.3),
+          interactive: false
+        }).addTo(leafletMap.current);
+        layersRef.current.push(circle);
+      });
       addMarkers();
     } else if (type === 'path') {
       const latlngs = points.map(p => [p.lat, p.lon]);
@@ -149,6 +192,36 @@ export const MapViewer = ({ type, points }: { type: string; points: Point[] }) =
         dashArray: '5, 10'
       }).addTo(leafletMap.current);
       layersRef.current.push(polyline);
+
+      // Add numbering and arrows
+      points.forEach((p, idx) => {
+        if (idx < points.length - 1) {
+          const nextP = points[idx + 1];
+          const midLat = (p.lat + nextP.lat) / 2;
+          const midLon = (p.lon + nextP.lon) / 2;
+          
+          // Calculate angle for the arrow
+          const angle = Math.atan2(nextP.lat - p.lat, nextP.lon - p.lon) * (180 / Math.PI);
+          
+          const arrowIcon = L.divIcon({
+            className: 'custom-arrow-icon',
+            html: `
+              <div style="transform: rotate(${angle}deg); color: white; font-size: 14px; font-weight: bold; text-shadow: 0 0 4px black;">
+                ➤
+              </div>
+              <div style="position: absolute; top: -15px; left: 50%; transform: translateX(-50%); color: #ffaa00; font-size: 10px; font-weight: bold; background: black; padding: 1px 4px; border-radius: 4px;">
+                ${idx + 1}
+              </div>
+            `,
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+          });
+          
+          const arrowMarker = L.marker([midLat, midLon], { icon: arrowIcon, interactive: false }).addTo(leafletMap.current);
+          layersRef.current.push(arrowMarker);
+        }
+      });
+
       addMarkers();
     } else if (type === 'cluster') {
       points.forEach(p => {

@@ -1,3 +1,5 @@
+export type View = 'dashboard' | 'map' | 'towers' | 'upload';
+
 export interface Point {
   lat: number;
   lon: number;

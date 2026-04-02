@@ -12,3 +12,9 @@ export const formatDuration = (seconds: number) => {
   if (mins > 0) return `${mins}m ${secs}s`;
   return `${secs}s`;
 };
+
+export const formatDate = (dateStr: string) => {
+  if (!dateStr || !dateStr.includes('-')) return dateStr;
+  const [year, month, day] = dateStr.split('-');
+  return `${day}/${month}/${year}`;
+};

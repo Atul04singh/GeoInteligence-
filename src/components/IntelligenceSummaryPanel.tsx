@@ -1,6 +1,6 @@
 import React from 'react';
 import { AlertCircle, Phone, Map as MapIcon, Zap } from 'lucide-react';
-import { cn, formatDuration } from '../lib/utils';
+import { cn, formatDuration, formatDate } from '../lib/utils';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
 import { IntelligenceSummary } from '../types';
@@ -50,8 +50,8 @@ export const IntelligenceSummaryPanel = ({ summary }: { summary: IntelligenceSum
           </div>
           
           <div className="mt-2 overflow-hidden rounded-lg border border-white/5">
-            <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
-              <table className="w-full text-left border-collapse">
+            <div className="max-h-[300px] overflow-auto custom-scrollbar">
+              <table className="w-full text-left border-collapse min-w-[600px]">
                 <thead className="sticky top-0 bg-[#0A0A0A] z-10">
                   <tr className="border-b border-white/10">
                     <th className="px-4 py-3 text-[10px] font-bold text-white/40 uppercase tracking-wider">Rank</th>
@@ -92,7 +92,7 @@ export const IntelligenceSummaryPanel = ({ summary }: { summary: IntelligenceSum
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex flex-col items-end">
-                          <p className="text-[10px] text-white/60">{contact.lastDate || "N/A"}</p>
+                          <p className="text-[10px] text-white/60">{formatDate(contact.lastDate || "") || "N/A"}</p>
                           <p className="text-[9px] text-white/30">{contact.lastTime || "N/A"}</p>
                         </div>
                       </td>

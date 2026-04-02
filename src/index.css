@@ -1,5 +1,62 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  :root {
+    --radius-s: 4px;
+    --radius-m: 8px;
+    --radius-l: 12px;
+    --radius-xl: 16px;
+  }
+
+  html {
+    font-size: 16px;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-[#050505] text-white antialiased;
+    font-size: 16px;
+    line-height: 1.5;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    line-height: 1.2;
+    @apply font-bold tracking-tight;
+  }
+
+  h1 { font-size: 24px; }
+  h2 { font-size: 20px; }
+  h3 { font-size: 18px; }
+  
+  p { font-size: 16px; }
+  small { font-size: 13px; }
+
+  button {
+    @apply cursor-pointer transition-all active:scale-95;
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  input, select, textarea {
+    @apply text-base; /* Prevents iOS zoom on focus */
+  }
+}
+
+@layer components {
+  .mobile-container {
+    @apply w-full px-4 mx-auto;
+  }
+
+  .touch-target {
+    @apply min-w-[44px] min-h-[44px] flex items-center justify-center;
+  }
+}
+
 .clickable-marker {
   cursor: pointer !important;
   filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.5));
