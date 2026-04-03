@@ -102,7 +102,7 @@ export const Sidebar = ({
                         <p className="text-sm font-medium truncate">{item.name}</p>
                         <p className="text-[10px] text-white/20 flex items-center gap-1">
                           <Clock size={10} />
-                          {new Date(item.timestamp).toLocaleDateString()}
+                          {new Date(item.timestamp).toLocaleDateString('en-GB')}
                         </p>
                       </div>
                     )}
@@ -215,7 +215,7 @@ export const Sidebar = ({
                       <p className="text-sm font-bold truncate text-white">{item.name}</p>
                       <p className="text-[10px] text-white/30 flex items-center gap-1 mt-1 font-bold uppercase tracking-widest">
                         <Clock size={10} />
-                        {new Date(item.timestamp).toLocaleDateString()}
+                        {new Date(item.timestamp).toLocaleDateString('en-GB')}
                       </p>
                     </div>
                   </button>

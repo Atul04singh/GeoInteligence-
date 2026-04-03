@@ -79,9 +79,9 @@ export default function App() {
               } else if (p1 > 12) { // Definitely MM/DD/YYYY
                 [month, day, year] = parts;
               } else {
-                // Ambiguous (both <= 12), default to MM/DD/YYYY 
-                // because user's data seems to follow this (e.g. 03/12/2026 is March 12)
-                [month, day, year] = parts;
+                // Ambiguous (both <= 12), default to DD/MM/YYYY 
+                // as it is the standard format in India (user's region)
+                [day, month, year] = parts;
               }
             }
             
