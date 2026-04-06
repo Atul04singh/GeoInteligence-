@@ -18,6 +18,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { AnalysisResult } from '../types';
+import { generateReport, OCRMode } from '../lib/pdfGenerator';
+import { ChevronDown } from 'lucide-react';
 
 interface NavbarProps {
   result: AnalysisResult | null;
@@ -27,23 +29,33 @@ interface NavbarProps {
 
 export const Navbar = ({ result, onSearchChange, searchQuery }: NavbarProps) => {
   const [showProfile, setShowProfile] = useState(false);
+  const [showOCRMenu, setShowOCRMenu] = useState(false);
   const popupRef = useRef<HTMLDivElement>(null);
+  const ocrMenuRef = useRef<HTMLDivElement>(null);
 
-  // Close popup when clicking outside
+  // Close popups when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (popupRef.current && !popupRef.current.contains(event.target as Node)) {
         setShowProfile(false);
       }
+      if (ocrMenuRef.current && !ocrMenuRef.current.contains(event.target as Node)) {
+        setShowOCRMenu(false);
+      }
     };
 
-    if (showProfile) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
+    document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showProfile]);
+  }, []);
+
+  const handleGenerateOCR = (mode: OCRMode) => {
+    if (result) {
+      generateReport(result, mode);
+      setShowOCRMenu(false);
+    }
+  };
 
   return (
     <nav className="h-14 sm:h-16 bg-[#0A0A0A]/80 backdrop-blur-xl border-b border-white/5 px-4 sm:px-6 flex items-center justify-between sticky top-0 z-40">
@@ -71,6 +83,61 @@ export const Navbar = ({ result, onSearchChange, searchQuery }: NavbarProps) => 
 
       {/* Right: Actions */}
       <div className="flex items-center gap-3 sm:gap-4 relative">
+        {result && (
+          <div className="relative" ref={ocrMenuRef}>
+            <button 
+              onClick={() => setShowOCRMenu(!showOCRMenu)}
+              className={cn(
+                "flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-all shadow-lg active:scale-95",
+                showOCRMenu 
+                  ? "bg-orange-600 text-white shadow-orange-500/40" 
+                  : "bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/20"
+              )}
+            >
+              <Download size={14} className="sm:w-4 sm:h-4" />
+              <span className="hidden xs:inline">Generate OCR</span>
+              <span className="xs:hidden">OCR</span>
+              <ChevronDown size={14} className={cn("transition-transform duration-200", showOCRMenu && "rotate-180")} />
+            </button>
+
+            <AnimatePresence>
+              {showOCRMenu && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  className="absolute top-full right-0 mt-2 w-48 bg-[#1A1A1A] border border-white/10 rounded-2xl p-2 shadow-2xl z-50 backdrop-blur-xl"
+                >
+                  <button
+                    onClick={() => handleGenerateOCR('full')}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-xl transition-colors text-left group"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center text-orange-500 group-hover:bg-orange-500 group-hover:text-white transition-colors">
+                      <FileText size={16} />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-white">Full OCR</p>
+                      <p className="text-[10px] text-white/40">Complete analysis</p>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => handleGenerateOCR('call-only')}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-xl transition-colors text-left group mt-1"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition-colors">
+                      <Activity size={16} />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-white">Call Only</p>
+                      <p className="text-[10px] text-white/40">10-digit mobile only</p>
+                    </div>
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
+
         <div className="flex items-center gap-2 sm:gap-3 pl-2">
           <div className="text-right hidden md:block">
             <p className="text-[10px] text-white font-bold leading-none">Analyst Mode</p>

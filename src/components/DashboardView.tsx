@@ -55,7 +55,7 @@ export const DashboardView = ({ result, onViewChange }: DashboardViewProps) => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
         {/* Intelligence Summary Panel (Contact Table) */}
         <div className="lg:col-span-8 space-y-6 lg:space-y-8">
-          <IntelligenceSummaryPanel summary={summary} />
+          <IntelligenceSummaryPanel result={result} />
         </div>
 
         {/* Sidebar Insights */}
