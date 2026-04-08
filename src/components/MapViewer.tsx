@@ -6,15 +6,18 @@ interface MapViewerProps {
   type: string;
   points: Point[];
   selectedPoint?: Point | null;
+  mapStyle?: 'default' | 'satellite';
 }
 
 export const MapViewer = ({ 
   type, 
   points, 
-  selectedPoint, 
+  selectedPoint,
+  mapStyle = 'default',
 }: MapViewerProps) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMap = useRef<any>(null);
+  const tileLayerRef = useRef<any>(null);
   const layersRef = useRef<any[]>([]);
 
   useEffect(() => {
@@ -28,8 +31,17 @@ export const MapViewer = ({
     
     L.control.zoom({ position: 'bottomright' }).addTo(leafletMap.current);
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    // Initial tile layer
+    const tileUrl = mapStyle === 'satellite' 
+      ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+      : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+    
+    const attribution = mapStyle === 'satellite'
+      ? 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EBP, and the GIS User Community'
+      : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+
+    tileLayerRef.current = L.tileLayer(tileUrl, {
+      attribution,
       subdomains: 'abcd',
       maxZoom: 20
     }).addTo(leafletMap.current);
@@ -50,6 +62,25 @@ export const MapViewer = ({
       }
     };
   }, []);
+
+  // Update tile layer when mapStyle changes
+  useEffect(() => {
+    if (!leafletMap.current || !tileLayerRef.current) return;
+    const L = (window as any).L;
+
+    const tileUrl = mapStyle === 'satellite' 
+      ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+      : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+    
+    const attribution = mapStyle === 'satellite'
+      ? 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EBP, and the GIS User Community'
+      : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+
+    tileLayerRef.current.setUrl(tileUrl);
+    leafletMap.current.attributionControl.removeAttribution(tileLayerRef.current.options.attribution);
+    tileLayerRef.current.options.attribution = attribution;
+    leafletMap.current.attributionControl.addAttribution(attribution);
+  }, [mapStyle]);
 
   // Zoom to selected point
   useEffect(() => {
@@ -227,10 +258,10 @@ export const MapViewer = ({
       points.forEach(p => {
         const circle = L.circle([p.lat, p.lon], {
           color: 'white',
-          fillColor: 'white',
-          fillOpacity: 0.1,
-          radius: 100,
-          weight: 1
+          fillColor: 'transparent',
+          fillOpacity: 0,
+          radius: 60,
+          weight: 1.5
         }).addTo(leafletMap.current);
         layersRef.current.push(circle);
       });

@@ -28,6 +28,7 @@ interface MapViewProps {
 
 export const MapView = ({ result, searchQuery, onSearchChange }: MapViewProps) => {
   const [mapType, setMapType] = useState<'heatmap' | 'path' | 'cluster'>('heatmap');
+  const [mapStyle, setMapStyle] = useState<'default' | 'satellite'>('default');
   const [showFilters, setShowFilters] = useState(false);
   const [activeTab, setActiveTab] = useState<'filters' | 'timeline'>('filters');
   const [filterDate, setFilterDate] = useState('');
@@ -74,11 +75,34 @@ export const MapView = ({ result, searchQuery, onSearchChange }: MapViewProps) =
           type={mapType} 
           points={filteredPoints} 
           selectedPoint={selectedPoint} 
+          mapStyle={mapStyle}
         />
       </div>
 
       {/* Layer Controls (Floating) */}
       <div className="absolute top-4 sm:top-6 left-4 sm:left-6 z-10 flex flex-row sm:flex-col gap-2 sm:gap-3 max-w-[calc(100%-100px)] overflow-x-auto no-scrollbar pb-2">
+        {/* Map Style Toggle */}
+        <div className="flex bg-[#0A0A0A]/80 backdrop-blur-xl border border-white/10 rounded-xl sm:rounded-2xl p-1 mb-0 sm:mb-2 shrink-0">
+          <button
+            onClick={() => setMapStyle('default')}
+            className={cn(
+              "px-3 py-1.5 rounded-lg sm:rounded-xl text-[10px] font-bold transition-all",
+              mapStyle === 'default' ? "bg-white text-black" : "text-white/40 hover:text-white"
+            )}
+          >
+            Default
+          </button>
+          <button
+            onClick={() => setMapStyle('satellite')}
+            className={cn(
+              "px-3 py-1.5 rounded-lg sm:rounded-xl text-[10px] font-bold transition-all",
+              mapStyle === 'satellite' ? "bg-white text-black" : "text-white/40 hover:text-white"
+            )}
+          >
+            Satellite
+          </button>
+        </div>
+
         {mapTypes.map((type) => (
           <button
             key={type.id}
