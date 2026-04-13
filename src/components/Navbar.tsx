@@ -109,27 +109,27 @@ export const Navbar = ({ result, onSearchChange, searchQuery }: NavbarProps) => 
                   className="absolute top-full right-0 mt-2 w-48 bg-[#1A1A1A] border border-white/10 rounded-2xl p-2 shadow-2xl z-50 backdrop-blur-xl"
                 >
                   <button
-                    onClick={() => handleGenerateOCR('full')}
+                    onClick={() => handleGenerateOCR('summary')}
                     className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-xl transition-colors text-left group"
                   >
                     <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center text-orange-500 group-hover:bg-orange-500 group-hover:text-white transition-colors">
                       <FileText size={16} />
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-white">Full OCR</p>
-                      <p className="text-[10px] text-white/40">Complete analysis</p>
+                      <p className="text-xs font-bold text-white">Summary Report</p>
+                      <p className="text-[10px] text-white/40">5-page executive insight</p>
                     </div>
                   </button>
                   <button
-                    onClick={() => handleGenerateOCR('call-only')}
+                    onClick={() => handleGenerateOCR('detailed')}
                     className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-xl transition-colors text-left group mt-1"
                   >
                     <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition-colors">
                       <Activity size={16} />
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-white">Call Only</p>
-                      <p className="text-[10px] text-white/40">10-digit mobile only</p>
+                      <p className="text-xs font-bold text-white">Detailed Report</p>
+                      <p className="text-[10px] text-white/40">Full call timelines</p>
                     </div>
                   </button>
                 </motion.div>
